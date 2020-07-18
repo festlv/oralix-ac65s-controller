@@ -1,0 +1,3 @@
+[submodule "oralix-esp32-fw/components/libtelnet"]
+	path = oralix-esp32-fw/components/libtelnet
+	url = https://github.com/festlv/libtelnet.git
