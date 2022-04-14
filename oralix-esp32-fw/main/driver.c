@@ -13,13 +13,14 @@
 
 //DUTY cycle of tube (if firing for 100ms, need to wait 100ms * 30 before firing again
 #define TUBE_DUTY_CYCLE 30
+#define TUBE_MIN_COOLDOWN_US (30*1000*1000)
+
 #define ZCD_POS_GPIO 16
 #define ZCD_NEG_GPIO 17
 
 //length of mains half-cycle at 50Hz
 #define PULSE_DURATION_US 20000
 #define NUM_WARMUP_PULSES 6
-
 inline void delay_ms(uint32_t ms) {
     vTaskDelay(ms / portTICK_PERIOD_MS);
 }
@@ -57,6 +58,9 @@ static bool driver_check_duty_cycle() {
         //duty cycle exceeded
         return false;
     }
+
+    if (cool_time < TUBE_MIN_COOLDOWN_US)
+        return false;
 
     return true;
 }

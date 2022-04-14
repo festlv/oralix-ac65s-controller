@@ -9,6 +9,7 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "driver/uart.h"
 #include "esp_system.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
@@ -43,90 +44,94 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
-static char tag[] = "telnet";
+static char tag[] = "xray";
 
-void respond(const char* resp) {
-    telnet_esp32_sendData((uint8_t *)resp, strlen(resp));
-}
 
-static void recvData(uint8_t *buffer, size_t size) {
-	ESP_LOGD(tag, "We received: %.*s", size, buffer);
+#define STATIC_RESPOND(x) (respond_func((uint8_t*)x, strlen(x)))
+#define RESPOND(x, y) (respond_func(x, y))
+
+static void process_line(uint8_t *buffer, size_t size, void (*respond_func)(uint8_t*, size_t)) {
+	ESP_LOGD(tag, "received: %.*s", size, buffer);
 
     if (strncmp((char*)buffer, "help", 4) == 0) {
-        respond("Welcome brave warrior!\n");
-        respond("Commands: \n");
-        respond("status: driver status\n");
-        respond("arm: arms the device (enables input relay)\n");
-        respond("disarm: disarms\n");
-        respond("warmup: warms up the tube (sends 6 pulses)\n");
-        respond("fire <ms>: warms up the tube and performs an exposure of <ms> duration\n");
-        respond("fire_nowarmup <ms>: fires tube for <ms> without warmup (CAUTION!)\n");
-        respond("\n");
+        STATIC_RESPOND("Welcome brave warrior!\n");
+        STATIC_RESPOND("Commands: \n");
+        STATIC_RESPOND("status: driver status\n");
+        STATIC_RESPOND("arm: arms the device (enables input relay)\n");
+        STATIC_RESPOND("disarm: disarms\n");
+        STATIC_RESPOND("warmup: warms up the tube (sends 6 pulses)\n");
+        STATIC_RESPOND("fire <ms>: warms up the tube and performs an exposure of <ms> duration\n");
+        STATIC_RESPOND("fire_nowarmup <ms>: fires tube for <ms> without warmup (CAUTION!)\n");
+        STATIC_RESPOND("\n");
     }
 
     if (strncmp((char*)buffer, "status", 6) == 0) {
         char buf[256];
         uint32_t len = driver_get_status(buf, sizeof(buf));
-        telnet_esp32_sendData((uint8_t *)buf, len);
+        RESPOND((uint8_t *)buf, len);
     }
 
     if (strncmp((char*)buffer, "arm", 3) == 0) {
 	    if (driver_arm()) {
-	        respond("armed\n");
+	        STATIC_RESPOND("armed\n");
 	    } else {
-	        respond("failed to arm\n");
+	        STATIC_RESPOND("failed to arm\n");
 	    }
 	}
     if (strncmp((char*)buffer, "disarm", 6) == 0) {
         if (driver_disarm()) {
-            respond("disarmed\n");
+            STATIC_RESPOND("disarmed\n");
         } else {
-            respond("failed to disarm, run!\n");
+            STATIC_RESPOND("failed to disarm, run!\n");
         }
     }
     if (strncmp((char*)buffer, "warmup", 6) == 0) {
         if (driver_warmup()) {
-            respond("started warmup\n");
+            STATIC_RESPOND("started warmup\n");
         } else {
-            respond("failed to start warmup!\n");
+            STATIC_RESPOND("failed to start warmup!\n");
         }
     }
     if (strncmp((char*)buffer, "fire_nowarmup", 13) == 0) {
         int time_ms;
         if (sscanf((char*)(buffer + 14), "%d", &time_ms) == 1) {
             if (time_ms < 0 || time_ms > 3000) {
-                respond("Dave, I'm afraid I can't do that.\n");
+                STATIC_RESPOND("Dave, I'm afraid I can't do that.\n");
             } else {
                 if (driver_fire_time_nowarmup(time_ms)) {
-                    respond("firing!\n");
+                    STATIC_RESPOND("firing!\n");
                 } else {
-                    respond("failed to fire!\n");
+                    STATIC_RESPOND("failed to fire!\n");
                 }
             }
         } else {
-            respond("failed to parse time!\n");
+            STATIC_RESPOND("failed to parse time!\n");
         }
     } else if (strncmp((char*)buffer, "fire", 4) == 0) {
         int time_ms;
         if (sscanf((char*)(buffer + 5), "%d", &time_ms) == 1) {
             if (time_ms < 0 || time_ms > 3000) {
-                respond("Dave, I'm afraid I can't do that.\n");
+                STATIC_RESPOND("Dave, I'm afraid I can't do that.\n");
             } else {
                 if (driver_fire_time(time_ms)) {
-                    respond("firing!\n");
+                    STATIC_RESPOND("firing!\n");
                 } else {
-                    respond("failed to fire!\n");
+                    STATIC_RESPOND("failed to fire!\n");
                 }
             }
         } else {
-            respond("failed to parse time!\n");
+            STATIC_RESPOND("failed to parse time!\n");
         }
     }
 }
 
+static void telnetRecvData(uint8_t *buffer, size_t size) {
+    process_line(buffer, size, &telnet_esp32_sendData);
+}
+
 static void telnetTask(void *data) {
 	ESP_LOGD(tag, ">> telnetTask");
-	telnet_esp32_listenForClients(recvData);
+	telnet_esp32_listenForClients(telnetRecvData);
 	ESP_LOGD(tag, "<< telnetTask");
 	vTaskDelete(NULL);
 }
@@ -163,6 +168,53 @@ void wifi_init_softap()
              EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS);
 }
 
+static void uartRespond(uint8_t* data, size_t len) {
+    uart_write_bytes(UART_NUM_2, (const char*)data, len);
+}
+static void uartTask(void* data) {
+    ESP_LOGD(tag, ">> uartTask");
+    const uart_port_t uart_num = UART_NUM_2;
+    uart_config_t uart_config = {
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .rx_flow_ctrl_thresh = 122,
+    };
+    // Configure UART parameters
+    ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
+    ESP_ERROR_CHECK(uart_set_pin(UART_NUM_2, 27, 26, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+
+    // Setup UART buffered IO with event queue
+    const int uart_buffer_size = (1024 * 2);
+    QueueHandle_t uart_queue;
+    // Install UART driver using an event queue here
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, uart_buffer_size, \
+                                            uart_buffer_size, 10, &uart_queue, 0));
+
+    uint8_t rx_buffer[512];
+    int rx_buffer_idx=0;
+
+    while (true) {
+        int length = 0;
+        ESP_ERROR_CHECK(uart_get_buffered_data_len(UART_NUM_2, (size_t*)&length));
+        if (length > 0) {
+            length = uart_read_bytes(UART_NUM_2, rx_buffer + rx_buffer_idx, length, 100);
+            rx_buffer_idx += length;
+
+            //check for \n in the received data
+            for (int i=0; i < rx_buffer_idx; i++) {
+                if (rx_buffer[i] == '\n') {
+                    process_line(rx_buffer, i, &uartRespond);
+                    rx_buffer_idx = 0;
+                    break;
+                }
+            }
+        }
+        vTaskDelay(1);
+    }
+}
 void app_main()
 {
     //Initialize NVS
@@ -176,5 +228,7 @@ void app_main()
     ESP_LOGI(TAG, "ESP_WIFI_MODE_AP");
     wifi_init_softap();
     xTaskCreatePinnedToCore(&telnetTask, "telnetTask", 8048, NULL, 5, NULL, 0);
+    xTaskCreatePinnedToCore(&uartTask, "uartTask", 8048, NULL, 5, NULL, 0);
+    
     driver_init();
 }
