@@ -73,54 +73,54 @@ static void process_line(uint8_t *buffer, size_t size, void (*respond_func)(uint
 
     if (strncmp((char*)buffer, "arm", 3) == 0) {
 	    if (driver_arm()) {
-	        STATIC_RESPOND("armed\n");
+	        STATIC_RESPOND("OK:armed\n");
 	    } else {
-	        STATIC_RESPOND("failed to arm\n");
+	        STATIC_RESPOND("FAIL:failed to arm\n");
 	    }
 	}
     if (strncmp((char*)buffer, "disarm", 6) == 0) {
         if (driver_disarm()) {
-            STATIC_RESPOND("disarmed\n");
+            STATIC_RESPOND("OK:disarmed\n");
         } else {
-            STATIC_RESPOND("failed to disarm, run!\n");
+            STATIC_RESPOND("FAIL:failed to disarm, run!\n");
         }
     }
     if (strncmp((char*)buffer, "warmup", 6) == 0) {
         if (driver_warmup()) {
-            STATIC_RESPOND("started warmup\n");
+            STATIC_RESPOND("OK:started warmup\n");
         } else {
-            STATIC_RESPOND("failed to start warmup!\n");
+            STATIC_RESPOND("FAIL:failed to start warmup!\n");
         }
     }
     if (strncmp((char*)buffer, "fire_nowarmup", 13) == 0) {
         int time_ms;
         if (sscanf((char*)(buffer + 14), "%d", &time_ms) == 1) {
             if (time_ms < 0 || time_ms > 3000) {
-                STATIC_RESPOND("Dave, I'm afraid I can't do that.\n");
+                STATIC_RESPOND("FAIL:Dave, I'm afraid I can't do that.\n");
             } else {
                 if (driver_fire_time_nowarmup(time_ms)) {
-                    STATIC_RESPOND("firing!\n");
+                    STATIC_RESPOND("OK:firing!\n");
                 } else {
-                    STATIC_RESPOND("failed to fire!\n");
+                    STATIC_RESPOND("FAIL:failed to fire!\n");
                 }
             }
         } else {
-            STATIC_RESPOND("failed to parse time!\n");
+            STATIC_RESPOND("FAIL:failed to parse time!\n");
         }
     } else if (strncmp((char*)buffer, "fire", 4) == 0) {
         int time_ms;
         if (sscanf((char*)(buffer + 5), "%d", &time_ms) == 1) {
             if (time_ms < 0 || time_ms > 3000) {
-                STATIC_RESPOND("Dave, I'm afraid I can't do that.\n");
+                STATIC_RESPOND("FAIL:Dave, I'm afraid I can't do that.\n");
             } else {
                 if (driver_fire_time(time_ms)) {
-                    STATIC_RESPOND("firing!\n");
+                    STATIC_RESPOND("OK:firing!\n");
                 } else {
-                    STATIC_RESPOND("failed to fire!\n");
+                    STATIC_RESPOND("FAIL:failed to fire!\n");
                 }
             }
         } else {
-            STATIC_RESPOND("failed to parse time!\n");
+            STATIC_RESPOND("FAIL:failed to parse time!\n");
         }
     }
 }
